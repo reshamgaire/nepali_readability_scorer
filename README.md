@@ -2,6 +2,8 @@
 
 A lightweight Nepali text readability tool that scores passages based on vocabulary difficulty, orthographic complexity, akshara structure, and sentence length. It includes both a Python scoring library and a small Flask web app for interactive analysis.
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Nepali%20Readability%20Scorer-brightgreen?style=for-the-badge&logo=rocket)](https://nepalireadabilityscorer.vercel.app/)
+
 ## Overview
 
 This project evaluates Nepali reading difficulty with a composite score called the Composite Document Readability Score (CDRS). The model combines:
