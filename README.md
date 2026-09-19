@@ -116,3 +116,6 @@ The default weights are normalized automatically if custom values do not sum to 
 - Words not present in `nepali_scorer/words_by_grade.json` use the configured fallback grade.
 - The app uses a simple cache to reload the word list if the file changes.
 - The scoring is heuristic and is best used as an analytical aid rather than an absolute measure of reading difficulty.
+
+## License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
