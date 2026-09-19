@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ne">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nepali Readability Scorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=Hind:wght@400;500;600&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="shell">
+
+  <header class="masthead">
+    <h1><span class="devanagari-title">पठनीयता मापक</span><span style="color: var(--ink-soft); font-weight: 500;">Readability Scorer</span></h1>
+    <p>Scores Devanagari passages on curricular vocabulary, orthographic complexity and sentence length, then combines them into one composite score.</p>
+    <span class="wordlist-chip" id="wordlist-chip">{{ wordlist_count }} words loaded from {{ wordlist_filename }}</span>
+  </header>
+
+  <div class="workspace">
+
+    <!-- ============ INPUT PANEL ============ -->
+    <section class="panel input-panel">
+      <h2>Passage</h2>
+      <textarea id="passage" placeholder="नेपाली पाठ यहाँ टाइप गर्नुहोस् वा टाँस्नुहोस्…" lang="ne">{{ examples.simple }}</textarea>
+
+      <div class="example-row">
+        <button type="button" data-example="simple">Load simple example</button>
+        <button type="button" data-example="complex">Load complex example</button>
+      </div>
+
+      <details class="advanced">
+        <summary>Adjust scoring weights</summary>
+
+        <div class="weight-group">
+          <h3>Word-level factors (RDS_w = w₁F_G + w₂F_C + w₃F_A)</h3>
+          <div class="slider-row">
+            <label for="w1">Grade (F_G)</label>
+            <input type="range" id="w1" min="0" max="1" step="0.01" value="{{ '%.2f' % default_weights.w1 }}">
+            <span class="val" id="w1-val"></span>
+          </div>
+          <div class="slider-row">
+            <label for="w2">Orthographic (F_C)</label>
+            <input type="range" id="w2" min="0" max="1" step="0.01" value="{{ '%.2f' % default_weights.w2 }}">
+            <span class="val" id="w2-val"></span>
+          </div>
+          <div class="slider-row">
+            <label for="w3">Akshara (F_A)</label>
+            <input type="range" id="w3" min="0" max="1" step="0.01" value="{{ '%.2f' % default_weights.w3 }}">
+            <span class="val" id="w3-val"></span>
+          </div>
+          <p class="hint">Re-normalised to sum to 1.0 automatically.</p>
+        </div>
+
+        <div class="weight-group">
+          <h3>Composite score (CDRS = αRDS̄ + βHWD + γF_ASL)</h3>
+          <div class="slider-row">
+            <label for="alpha">Word diff. (α)</label>
+            <input type="range" id="alpha" min="0" max="1" step="0.01" value="{{ '%.2f' % default_cdrs_weights.alpha }}">
+            <span class="val" id="alpha-val"></span>
+          </div>
+          <div class="slider-row">
+            <label for="beta">Hard words (β)</label>
+            <input type="range" id="beta" min="0" max="1" step="0.01" value="{{ '%.2f' % default_cdrs_weights.beta }}">
+            <span class="val" id="beta-val"></span>
+          </div>
+          <div class="slider-row">
+            <label for="gamma">Sentence len. (γ)</label>
+            <input type="range" id="gamma" min="0" max="1" step="0.01" value="{{ '%.2f' % default_cdrs_weights.gamma }}">
+            <span class="val" id="gamma-val"></span>
+          </div>
+          <p class="hint">Re-normalised to sum to 1.0 automatically.</p>
+        </div>
+
+        <div class="weight-group">
+          <h3>Other parameters</h3>
+          <div class="field-row">
+            <label for="threshold">Hard-word threshold τ</label>
+            <input type="number" id="threshold" min="0" max="100" step="1" value="{{ default_threshold }}">
+          </div>
+          <div class="field-row">
+            <label for="fallback">Grade for unlisted words</label>
+            <input type="number" id="fallback" min="1" max="12" step="1" value="{{ default_fallback_grade }}">
+          </div>
+          <p class="hint">Words absent from <code>words_by_grade.json</code> are assigned this grade.</p>
+        </div>
+      </details>
+
+      <button type="button" class="btn-primary" id="analyze-btn">Analyze passage</button>
+    </section>
+
+    <!-- ============ RESULTS CANVAS ============ -->
+    <section>
+      <div id="error-banner"></div>
+
+      <div id="placeholder" class="placeholder">Paste or load a passage, then select <strong>Analyze passage</strong> to see its readability breakdown.</div>
+
+      <div id="results">
+        <div class="hero">
+          <div class="score-block">
+            <p class="cdrs-number" id="cdrs-number">–</p>
+            <p class="band-label" id="band-label"></p>
+            <p class="band-grades" id="band-grades"></p>
+          </div>
+          <div class="scale">
+            <div class="scale-track">
+              <span class="scale-seg-primary"></span>
+              <span class="scale-seg-middle"></span>
+              <span class="scale-seg-secondary"></span>
+              <span class="scale-seg-advanced"></span>
+            </div>
+            <div class="scale-marker" id="scale-marker"></div>
+            <div class="scale-labels">
+              <span>0 · Early Primary</span>
+              <span>30</span>
+              <span>60</span>
+              <span>80</span>
+              <span>100 · Advanced</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="metric-row">
+          <div class="metric-card">
+            <div class="metric-label">Mean word difficulty (RDS̄)</div>
+            <div class="metric-value" id="metric-rds">–</div>
+            <div class="metric-sub" id="metric-rds-sub"></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Hard-word density (HWD)</div>
+            <div class="metric-value" id="metric-hwd">–</div>
+            <div class="metric-sub" id="metric-hwd-sub"></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Avg. sentence length (ASL)</div>
+            <div class="metric-value" id="metric-asl">–</div>
+            <div class="metric-sub" id="metric-asl-sub"></div>
+          </div>
+        </div>
+
+        <div class="contribution">
+          <h3>What made up the score</h3>
+          <div class="contribution-bar" id="contribution-bar"></div>
+          <div class="contribution-legend">
+            <span><span class="swatch" style="background: var(--band-middle);"></span>α · word difficulty</span>
+            <span><span class="swatch" style="background: var(--band-secondary);"></span>β · hard-word density</span>
+            <span><span class="swatch" style="background: var(--band-advanced);"></span>γ · sentence length</span>
+          </div>
+        </div>
+
+        <div class="histogram">
+          <h3>Word difficulty distribution</h3>
+          <canvas id="histogram-canvas" height="70"></canvas>
+        </div>
+
+        <div class="word-table-wrap">
+          <h3>Word-by-word breakdown</h3>
+          <table class="word-table" id="word-table">
+            <thead>
+              <tr>
+                <th data-key="word">Word</th>
+                <th data-key="grade">Grade</th>
+                <th data-key="akshara_count">Aksharas</th>
+                <th data-key="F_G">F_G</th>
+                <th data-key="F_C">F_C</th>
+                <th data-key="F_A">F_A</th>
+                <th data-key="RDS_w" class="sorted">RDS_w</th>
+              </tr>
+            </thead>
+            <tbody id="word-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="note">
+    Implements the Word-Level Difficulty Score, passage-level metrics and Composite Document Readability
+    Score (CDRS) described in the accompanying methodology note. Rows shaded red exceed the hard-word
+    threshold τ; grades marked <span class="wordlist-flag">*</span> were not found in the word list and use the fallback grade.
+  </footer>
+</div>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
